@@ -182,7 +182,7 @@ function App() {
           {/* <p className="mr-4 text-xs text-gray-500">Logged in as {user.email}</p> */}
           <button
             onClick={() => auth.signOut()}
-            className="bg-orange-500 text-white px-4 py-2 text-sm rounded hover:bg-orange-600"
+            className="bg-gray-400 text-white px-4 py-2 text-sm rounded hover:bg-gray-500"
           >
             Logout
           </button>
@@ -210,14 +210,14 @@ function App() {
                   {userRSVP ? (
                     <button
                       onClick={() => handleRemoveRSVP(userRSVP.id)}
-                      className="bg-gray-500 hover:bg-gray-600 px-3 py-3 rounded transition-colors flex items-center"
+                      className="bg-gray-400 hover:bg-gray-500 px-3 py-3 rounded transition-colors flex items-center"
                     >
                       <img src={cancelWhiteIcon} alt="Remove RSVP" className="w-4 h-4" />
                     </button>
                   ) : (
                     <button
                       onClick={() => handleRSVP(date)}
-                      className="bg-[#708238] hover:bg-[#607230] px-3 py-3 rounded transition-colors flex items-center"
+                      className="bg-orange-500 hover:bg-orange-600 px-3 py-3 rounded transition-colors flex items-center"
                     >
                       <img src={checkWhiteIcon} alt="RSVP" className="w-4 h-4" />
                     </button>
