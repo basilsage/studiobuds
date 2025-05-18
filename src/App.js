@@ -3,7 +3,7 @@ import './App.css';
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, addDoc, serverTimestamp, query, where, onSnapshot, Timestamp, deleteDoc, doc } from "firebase/firestore";
+import { getFirestore, collection, addDoc, serverTimestamp, query, where, onSnapshot, Timestamp, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { useState, useEffect } from 'react';
 import LoginModal from './LoginModal';
 import banIcon from './assets/ban.png';
@@ -29,7 +29,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+// const analytics = getAnalytics(app);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
@@ -103,47 +103,75 @@ function App() {
   };
 
   // Add this function to handle RSVP
-  const handleRSVP = async (date) => {
+  const handleRSVP = async (date, timeSlot) => {
     if (!user) return;
+    
+    // Find existing RSVP for this user and date
+    const dateKey = date.toISOString().split('T')[0];
+    const existingRsvps = rsvps[dateKey] || [];
+    const existingRsvp = existingRsvps.find(rsvp => rsvp.user_id === user.uid);
+    
     try {
-      await addDoc(collection(db, "rsvps"), {
-        user_id: user.uid,
-        user_email: user.email,
-        date: date,
-        created_at: serverTimestamp(),
-      });
+      if (existingRsvp) {
+        // Update existing RSVP
+        const updatedTimeSlots = {
+          ...existingRsvp,
+          [timeSlot]: !existingRsvp[timeSlot]
+        };
+        
+        // If all time slots are false, delete the RSVP
+        if (!updatedTimeSlots.morning && !updatedTimeSlots.midday && !updatedTimeSlots.evening) {
+          await deleteDoc(doc(db, "rsvps", existingRsvp.id));
+        } else {
+          // Update the RSVP with new time slot
+          await updateDoc(doc(db, "rsvps", existingRsvp.id), {
+            [timeSlot]: !existingRsvp[timeSlot],
+            updated_at: serverTimestamp()
+          });
+        }
+      } else {
+        // Create new RSVP
+        const newRsvp = {
+          user_id: user.uid,
+          user_email: user.email,
+          date: date,
+          morning: false,
+          midday: false,
+          evening: false,
+          [timeSlot]: true,
+          created_at: serverTimestamp(),
+        };
+        await addDoc(collection(db, "rsvps"), newRsvp);
+      }
       
-      // Add haptic feedback on successful RSVP
+      // Add haptic feedback
       if (navigator.vibrate) {
-        // Vibrate for 100ms
         navigator.vibrate(100);
       }
 
-      // Show success modal for 1 second
-      setShowSuccessModal(true);
-      setTimeout(() => {
-        setShowSuccessModal(false);
-      }, 1500);
+      // setShowSuccessModal(true);
+      // setTimeout(() => {
+      //   setShowSuccessModal(false);
+      // }, 1500);
     } catch (error) {
-      console.error("Error creating RSVP:", error);
-      alert("Failed to RSVP. Please try again.");
+      console.error("Error updating RSVP:", error);
+      alert("Failed to update RSVP. Please try again.");
     }
   };
 
-  // Add this function to handle RSVP removal
-  const handleRemoveRSVP = async (rsvpId) => {
-    if (!user) return;
-    try {
-      await deleteDoc(doc(db, "rsvps", rsvpId));
-    } catch (error) {
-      console.error("Error removing RSVP:", error);
-      alert("Failed to remove RSVP. Please try again.");
-    }
-  };
-
-  // Add this helper function to check if user has RSVPed
+  // Update getUserRSVP to return the full RSVP object
   const getUserRSVP = (dateRsvps) => {
     return dateRsvps.find(rsvp => rsvp.user_id === user?.uid);
+  };
+
+  // Add helper function to get time slot label
+  const getTimeSlotLabel = (slot) => {
+    switch(slot) {
+      case 'morning': return '🌅';
+      case 'midday': return '☀️';
+      case 'evening': return '🌙';
+      default: return slot;
+    }
   };
 
   if (!user) {
@@ -193,7 +221,7 @@ function App() {
         {getNext30Days().map((date, index) => {
           const dateKey = date.toISOString().split('T')[0];
           const dateRsvps = rsvps[dateKey] || [];
-          const userRSVP = getUserRSVP(dateRsvps);
+          // const userRSVP = getUserRSVP(dateRsvps);
           
           return (
             <div 
@@ -201,27 +229,44 @@ function App() {
               className="bg-yellow-50 p-4 border-2 border-orange-300 shadow-[4px_4px_0px_0px_rgba(251,146,60,0.2)] hover:shadow-[6px_6px_0px_0px_rgba(251,146,60,0.3)] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all font-mono"
             >
               {/* Title bar */}
-              <div className="flex justify-between items-center">
-                <div className="flex flex-row items-center">
+              <div className="flex flex-col">
+                <div className="flex flex-row justify-between">
                   <p className="text-md font-semibold mr-4">{formatDate(date)}</p> 
                   <p className="text-sm text-gray-500">{date.toLocaleDateString('en-US', { weekday: 'long' })}</p>
                 </div>
-                <div>
-                  {userRSVP ? (
-                    <button
-                      onClick={() => handleRemoveRSVP(userRSVP.id)}
-                      className="bg-gray-400 hover:bg-gray-500 px-3 py-3 rounded transition-colors flex items-center"
-                    >
-                      <img src={cancelWhiteIcon} alt="Remove RSVP" className="w-4 h-4" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleRSVP(date)}
-                      className="bg-orange-500 hover:bg-orange-600 px-3 py-3 rounded transition-colors flex items-center"
-                    >
-                      <img src={checkWhiteIcon} alt="RSVP" className="w-4 h-4" />
-                    </button>
-                  )}
+                
+                {/* Buttons */}
+                <div className="flex gap-2 mt-2">
+                  {['morning', 'midday', 'evening'].map((timeSlot) => {
+                    const userRSVP = getUserRSVP(dateRsvps);
+                    const isSelected = userRSVP?.[timeSlot] || false;
+                    
+                    return (
+                      <button
+                        key={timeSlot}
+                        onClick={() => handleRSVP(date, timeSlot)}
+                        className={`px-3 py-2 rounded transition-colors text-xs w-1/3 flex justify-between ${
+                          isSelected 
+                            ? 'bg-orange-300 text-white' // Orange background for selected state
+                            : 'bg-gray-200 hover:bg-gray-300 text-gray-700' // Gray background for unselected state
+                        }`}
+                      >
+                        {/* Toggle switch container */}
+                        <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ease-in-out ${
+                          isSelected ? 'bg-orange-200' : 'bg-gray-300' // Background color changes based on selection state
+                        }`}>
+                          {/* Toggle switch circle/knob that moves left/right */}
+                          <div className={`absolute top-0.5 h-3 w-3 rounded-full transition-all duration-300 ease-in-out transform ${
+                            isSelected 
+                              ? 'bg-orange-500 translate-x-4' // When selected, circle is orange and moved right
+                              : 'bg-gray-400 translate-x-0'    // When unselected, circle is gray and moved left
+                          }`}></div>
+                        </div>
+                        {/* Text label for the time slot (morning, midday, evening) */}
+                        <span className="text-xs">{getTimeSlotLabel(timeSlot)}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               
@@ -236,10 +281,19 @@ function App() {
                           rsvp.user_id === user?.uid ? 'border-l-4 border-orange-500' : ''
                         }`}
                       >
-                        <div className="flex items-center">
+                      <div className="flex items-center">
                           <div className="w-2 h-2 bg-orange-500 rounded-full mr-2"></div>
-                          <span className="text-sm text-gray-600">{rsvp.user_email}</span>
-                        </div> 
+                          <span className="text-sm text-gray-600 mr-3">{rsvp.user_email.split('@')[0]}</span>
+                          <div className="flex space-x-2">
+                            {['morning', 'midday', 'evening'].map((slot) => (
+                              rsvp[slot] && (
+                                <span key={slot} className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                                  {getTimeSlotLabel(slot)}
+                                </span>
+                              )
+                            ))}
+                        </div>
+                      </div> 
                       </div>
                     ))}
                   </div>
